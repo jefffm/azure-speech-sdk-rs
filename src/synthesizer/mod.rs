@@ -44,6 +44,7 @@ pub mod message;
 mod session;
 mod utils;
 mod voice;
+mod text_stream;
 
 mod callback;
 pub mod ssml;
@@ -55,3 +56,4 @@ pub use config::*;
 pub use event::*;
 pub use language::*;
 pub use voice::*;
+pub use text_stream::*;

@@ -56,6 +56,35 @@ impl Client {
 }
 
 impl Client {
+    /// Connect to websocket V2 endpoint, required for input text streaming APIs.
+    pub async fn connect_v2(auth: Auth, config: Config) -> crate::Result<Self> {
+        let url_str = format!(
+            "wss://{}.tts.speech{}/cognitiveservices/websocket/v2",
+            auth.region,
+            get_azure_hostname_from_region(auth.region.as_str())
+        );
+
+        let client = BaseClient::connect(
+            tokio_websockets::ClientBuilder::new()
+                .uri(&url_str)
+                .unwrap()
+                .add_header(
+                    "Ocp-Apim-Subscription-Key".try_into().unwrap(),
+                    (&auth.subscription).try_into().unwrap(),
+                )
+                .unwrap()
+                .add_header(
+                    "X-ConnectionId".try_into().unwrap(),
+                    uuid::Uuid::new_v4().to_string().try_into().unwrap(),
+                )
+                .unwrap(),
+        )
+        .await?;
+        Ok(Self::new(client, config))
+    }
+}
+
+impl Client {
     /// Synthesize the given text or ssml::Speak.
     ///
     /// The function will return a stream of `synthesizer::event::Event`.
@@ -111,6 +140,52 @@ impl Client {
             })
             // Stop the stream if there is an error or the session ended.
             .stop_after(|event| event.is_err() || matches!(event, Ok(Event::SessionEnded(_)))))
+    }
+}
+
+impl Client {
+    /// Start a streaming synthesis session (v2). Returns a `TextStream` writer
+    /// and an event stream producing audio and metadata in real time.
+    pub async fn synthesize_streaming(
+        &self,
+    ) -> crate::Result<(
+        crate::synthesizer::TextStream,
+        impl Stream<Item = crate::Result<Event>>,
+    )> {
+        let session = Session::new(uuid::Uuid::new_v4());
+        let config = self.config.clone();
+        let request_id = session.request_id().to_string();
+
+        let stream = self.client.stream().await?;
+
+        self.client
+            .send(create_speech_config_message(
+                request_id.to_string(),
+                &config,
+            ))
+            .await?;
+        self.client
+            .send(create_synthesis_context_message(
+                request_id.to_string(),
+                &config,
+            ))
+            .await?;
+
+        let writer = crate::synthesizer::TextStream::new(self.client.clone(), request_id.clone());
+
+        let session2 = session.clone();
+        let events = stream
+            .filter(move |message| match message {
+                Ok(message) => message.id == session.request_id().to_string(),
+                Err(_) => true,
+            })
+            .filter_map(move |message| match message {
+                Ok(message) => convert_message_to_event(message, session2.clone()),
+                Err(e) => Some(Err(e)),
+            })
+            .stop_after(|event| event.is_err() || matches!(event, Ok(Event::SessionEnded(_))));
+
+        Ok((writer, events))
     }
 }
 
