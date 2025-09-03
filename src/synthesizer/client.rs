@@ -25,28 +25,44 @@ impl Client {
     }
 
     pub async fn connect(auth: Auth, config: Config) -> crate::Result<Self> {
-        let url_str = format!(
-            "wss://{}.tts.speech{}/cognitiveservices/websocket/v1",
-            auth.region,
-            get_azure_hostname_from_region(auth.region.as_str())
-        );
+        let (url_str, maybe_key): (String, Option<String>) = match auth {
+            Auth::Subscription {
+                region,
+                subscription,
+            } => {
+                let url = format!(
+                    "wss://{}.tts.speech{}/cognitiveservices/websocket/v1",
+                    region,
+                    get_azure_hostname_from_region(region.as_str())
+                );
+                (url, Some(subscription))
+            }
+            Auth::Host { host } => {
+                let host = host.trim_end_matches('/');
+                let url = format!("{}/cognitiveservices/websocket/v1", host);
+                (url, None)
+            }
+        };
 
-        let client = BaseClient::connect(
-            tokio_websockets::ClientBuilder::new()
-                .uri(&url_str)
-                .unwrap()
+        let mut builder = tokio_websockets::ClientBuilder::new()
+            .uri(&url_str)
+            .unwrap();
+        if let Some(api_key) = maybe_key.as_ref() {
+            builder = builder
                 .add_header(
                     "Ocp-Apim-Subscription-Key".try_into().unwrap(),
-                    (&auth.subscription).try_into().unwrap(),
+                    api_key.as_str().try_into().unwrap(),
                 )
-                .unwrap()
-                .add_header(
-                    "X-ConnectionId".try_into().unwrap(),
-                    uuid::Uuid::new_v4().to_string().try_into().unwrap(),
-                )
-                .unwrap(),
-        )
-        .await?;
+                .unwrap();
+        }
+        builder = builder
+            .add_header(
+                "X-ConnectionId".try_into().unwrap(),
+                uuid::Uuid::new_v4().to_string().try_into().unwrap(),
+            )
+            .unwrap();
+
+        let client = BaseClient::connect(builder).await?;
         Ok(Self::new(client, config))
     }
 
@@ -58,28 +74,44 @@ impl Client {
 impl Client {
     /// Connect to websocket V2 endpoint, required for input text streaming APIs.
     pub async fn connect_v2(auth: Auth, config: Config) -> crate::Result<Self> {
-        let url_str = format!(
-            "wss://{}.tts.speech{}/cognitiveservices/websocket/v2",
-            auth.region,
-            get_azure_hostname_from_region(auth.region.as_str())
-        );
+        let (url_str, maybe_key): (String, Option<String>) = match auth {
+            Auth::Subscription {
+                region,
+                subscription,
+            } => {
+                let url = format!(
+                    "wss://{}.tts.speech{}/cognitiveservices/websocket/v2",
+                    region,
+                    get_azure_hostname_from_region(region.as_str())
+                );
+                (url, Some(subscription))
+            }
+            Auth::Host { host } => {
+                let host = host.trim_end_matches('/');
+                let url = format!("{}/cognitiveservices/websocket/v2", host);
+                (url, None)
+            }
+        };
 
-        let client = BaseClient::connect(
-            tokio_websockets::ClientBuilder::new()
-                .uri(&url_str)
-                .unwrap()
+        let mut builder = tokio_websockets::ClientBuilder::new()
+            .uri(&url_str)
+            .unwrap();
+        if let Some(api_key) = maybe_key.as_ref() {
+            builder = builder
                 .add_header(
                     "Ocp-Apim-Subscription-Key".try_into().unwrap(),
-                    (&auth.subscription).try_into().unwrap(),
+                    api_key.as_str().try_into().unwrap(),
                 )
-                .unwrap()
-                .add_header(
-                    "X-ConnectionId".try_into().unwrap(),
-                    uuid::Uuid::new_v4().to_string().try_into().unwrap(),
-                )
-                .unwrap(),
-        )
-        .await?;
+                .unwrap();
+        }
+        builder = builder
+            .add_header(
+                "X-ConnectionId".try_into().unwrap(),
+                uuid::Uuid::new_v4().to_string().try_into().unwrap(),
+            )
+            .unwrap();
+
+        let client = BaseClient::connect(builder).await?;
         Ok(Self::new(client, config))
     }
 }

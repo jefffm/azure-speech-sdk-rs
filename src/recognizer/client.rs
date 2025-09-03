@@ -31,13 +31,26 @@ impl Client {
     }
 
     pub async fn connect(auth: Auth, config: Config) -> crate::Result<Self> {
-        let base_url = format!(
-            "wss://{}.stt.speech{}/speech/recognition/{}/cognitiveservices/v1",
-            auth.region,
-            get_azure_hostname_from_region(&auth.region),
-            config.mode.as_str()
-        );
-        let mut url = Url::parse(&base_url)?;
+        let (mut url, maybe_key): (Url, Option<String>) = match auth {
+            Auth::Subscription { region, subscription } => {
+                let base_url = format!(
+                    "wss://{}.stt.speech{}/speech/recognition/{}/cognitiveservices/v1",
+                    region,
+                    get_azure_hostname_from_region(&region),
+                    config.mode.as_str()
+                );
+                (Url::parse(&base_url)?, Some(subscription))
+            }
+            Auth::Host { host } => {
+                let host = host.trim_end_matches('/').to_string();
+                let base_url = format!(
+                    "{}/speech/recognition/{}/cognitiveservices/v1",
+                    host,
+                    config.mode.as_str()
+                );
+                (Url::parse(&base_url)?, None)
+            }
+        };
 
         let language = config
             .languages
@@ -60,13 +73,17 @@ impl Client {
                 .append_pair("X-ConnectionId", connection_id);
         }
 
-        let ws_client = tokio_websockets::ClientBuilder::new()
+        let mut ws_client = tokio_websockets::ClientBuilder::new()
             .uri(url.as_str())
-            .unwrap()
-            .add_header(
-                "Ocp-Apim-Subscription-Key".try_into().unwrap(),
-                auth.subscription.to_string().as_str().try_into().unwrap(),
-            )?
+            .unwrap();
+        if let Some(api_key) = maybe_key.as_ref() {
+            ws_client = ws_client
+                .add_header(
+                    "Ocp-Apim-Subscription-Key".try_into().unwrap(),
+                    api_key.as_str().try_into().unwrap(),
+                )?;
+        }
+        ws_client = ws_client
             .add_header(
                 "X-ConnectionId".try_into().unwrap(),
                 uuid::Uuid::new_v4().to_string().try_into().unwrap(),
