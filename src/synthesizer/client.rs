@@ -85,6 +85,70 @@ impl Client {
 }
 
 impl Client {
+    /// Connect to a Speech TTS service via explicit ws(s) URL and API key.
+    pub async fn connect_with_url(
+        url: impl Into<String>,
+        api_key: impl Into<String>,
+        config: Config,
+    ) -> crate::Result<Self> {
+        let url_str = url.into();
+        let api_key_str = api_key.into();
+
+        let client = BaseClient::connect(
+            tokio_websockets::ClientBuilder::new()
+                .uri(&url_str)
+                .unwrap()
+                .add_header(
+                    "Ocp-Apim-Subscription-Key".try_into().unwrap(),
+                    api_key_str.try_into().unwrap(),
+                )
+                .unwrap()
+                .add_header(
+                    "X-ConnectionId".try_into().unwrap(),
+                    uuid::Uuid::new_v4().to_string().try_into().unwrap(),
+                )
+                .unwrap(),
+        )
+        .await?;
+        Ok(Self::new(client, config))
+    }
+}
+
+impl Client {
+    /// Connect to a TTS service by host/port (v1 websocket path).
+    /// Example: host="localhost", port=5000 -> ws://localhost:5000/cognitiveservices/websocket/v1
+    pub async fn connect_host(
+        host: impl Into<String>,
+        port: u16,
+        api_key: impl Into<String>,
+        config: Config,
+    ) -> crate::Result<Self> {
+        let url_str = format!(
+            "ws://{}:{}/cognitiveservices/websocket/v1",
+            host.into(),
+            port
+        );
+        Self::connect_with_url(url_str, api_key, config).await
+    }
+
+    /// Connect to a TTS service by host/port (v2 websocket path, required for text streaming).
+    /// Example: host="localhost", port=5000 -> ws://localhost:5000/cognitiveservices/websocket/v2
+    pub async fn connect_host_v2(
+        host: impl Into<String>,
+        port: u16,
+        api_key: impl Into<String>,
+        config: Config,
+    ) -> crate::Result<Self> {
+        let url_str = format!(
+            "ws://{}:{}/cognitiveservices/websocket/v2",
+            host.into(),
+            port
+        );
+        Self::connect_with_url(url_str, api_key, config).await
+    }
+}
+
+impl Client {
     /// Synthesize the given text or ssml::Speak.
     ///
     /// The function will return a stream of `synthesizer::event::Event`.
