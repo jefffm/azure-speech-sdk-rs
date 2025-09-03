@@ -120,6 +120,7 @@ impl Client {
             .send(create_synthesis_context_message(
                 request_id.to_string(),
                 &config,
+                None,
             ))
             .await?;
         self.client
@@ -168,6 +169,52 @@ impl Client {
             .send(create_synthesis_context_message(
                 request_id.to_string(),
                 &config,
+                None,
+            ))
+            .await?;
+
+        let writer = crate::synthesizer::TextStream::new(self.client.clone(), request_id.clone());
+
+        let session2 = session.clone();
+        let events = stream
+            .filter(move |message| match message {
+                Ok(message) => message.id == session.request_id().to_string(),
+                Err(_) => true,
+            })
+            .filter_map(move |message| match message {
+                Ok(message) => convert_message_to_event(message, session2.clone()),
+                Err(e) => Some(Err(e)),
+            })
+            .stop_after(|event| event.is_err() || matches!(event, Ok(Event::SessionEnded(_))));
+
+        Ok((writer, events))
+    }
+
+    /// Streaming synthesis with request-level options (pitch/rate/style/etc.).
+    pub async fn synthesize_streaming_with(
+        &self,
+        request: crate::synthesizer::StreamingRequest,
+    ) -> crate::Result<(
+        crate::synthesizer::TextStream,
+        impl Stream<Item = crate::Result<Event>>,
+    )> {
+        let session = Session::new(uuid::Uuid::new_v4());
+        let config = self.config.clone();
+        let request_id = session.request_id().to_string();
+
+        let stream = self.client.stream().await?;
+
+        self.client
+            .send(create_speech_config_message(
+                request_id.to_string(),
+                &config,
+            ))
+            .await?;
+        self.client
+            .send(create_synthesis_context_message(
+                request_id.to_string(),
+                &config,
+                Some(&request),
             ))
             .await?;
 

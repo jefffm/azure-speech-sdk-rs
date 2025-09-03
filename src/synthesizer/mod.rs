@@ -42,9 +42,9 @@ mod event;
 mod language;
 pub mod message;
 mod session;
+mod text_stream;
 mod utils;
 mod voice;
-mod text_stream;
 
 mod callback;
 pub mod ssml;
@@ -55,5 +55,50 @@ pub use client::*;
 pub use config::*;
 pub use event::*;
 pub use language::*;
-pub use voice::*;
 pub use text_stream::*;
+pub use voice::*;
+
+#[derive(Clone, Debug, Default)]
+pub struct StreamingRequest {
+    pub pitch: Option<String>,
+    pub rate: Option<String>,
+    pub volume: Option<String>,
+    pub style: Option<String>,
+    pub temperature: Option<f32>,
+    pub prefer_locales: Option<String>,
+    pub custom_lexicon_url: Option<String>,
+}
+
+impl StreamingRequest {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn pitch(mut self, v: impl Into<String>) -> Self {
+        self.pitch = Some(v.into());
+        self
+    }
+    pub fn rate(mut self, v: impl Into<String>) -> Self {
+        self.rate = Some(v.into());
+        self
+    }
+    pub fn volume(mut self, v: impl Into<String>) -> Self {
+        self.volume = Some(v.into());
+        self
+    }
+    pub fn style(mut self, v: impl Into<String>) -> Self {
+        self.style = Some(v.into());
+        self
+    }
+    pub fn temperature(mut self, v: f32) -> Self {
+        self.temperature = Some(v);
+        self
+    }
+    pub fn prefer_locales(mut self, v: impl Into<String>) -> Self {
+        self.prefer_locales = Some(v.into());
+        self
+    }
+    pub fn custom_lexicon_url(mut self, v: impl Into<String>) -> Self {
+        self.custom_lexicon_url = Some(v.into());
+        self
+    }
+}
